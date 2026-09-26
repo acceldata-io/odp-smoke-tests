@@ -8,6 +8,7 @@
 #   2) Ambari TRINO service STARTED (coordinator + workers)
 #   3) GET /v1/info on coordinator (HTTP 200, coordinator=true)
 #   4) GET /v1/info on each worker (HTTP 200, coordinator=false)
+#   5) POST SELECT 1 to /v1/statement on coordinator, follow nextUri, expect [[1]]
 #
 # Environment (optional):
 #   AMBARI_CONFIG_FILE, AMBARI_BASE_URL, AMBARI_USER, AMBARI_PASSWORD, CLUSTER_NAME
@@ -250,6 +251,56 @@ for row in "${HOSTS[@]}"; do
   fi
   rm -f "$body"
 done
+
+# 5) Run a sample query (SELECT 1) via the Trino REST API and drain nextUri
+run_trino_query() {
+  local sql="$1" base="$2" resp next
+  resp="$(curl -sS --max-time 15 -X POST "${base}/v1/statement" \
+    -H 'X-Trino-User: admin' -H 'Content-Type: text/plain' \
+    --data "$sql")" || return 1
+  TRINO_QUERY_DATA=""
+  TRINO_QUERY_ERROR=""
+  while :; do
+    read -r rows err <<<"$(printf '%s' "$resp" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+data = d.get("data")
+err = d.get("error")
+print(json.dumps(data) if data else "-", json.dumps(err) if err else "-")
+')"
+    [[ "$rows" != "-" ]] && TRINO_QUERY_DATA+="${rows} "
+    [[ "$err" != "-" ]] && TRINO_QUERY_ERROR="$err"
+    next="$(printf '%s' "$resp" | python3 -c '
+import json, sys
+print(json.load(sys.stdin).get("nextUri") or "")
+')"
+    [[ -z "$next" ]] && break
+    resp="$(curl -sS --max-time 15 "$next")" || return 1
+  done
+}
+
+QUERY_BASE=""
+if [[ -n "${TRINO_URL:-}" ]]; then
+  QUERY_BASE="${TRINO_URL%/v1/info}"
+elif [[ -n "$COORD_IP" ]]; then
+  QUERY_BASE="http://${COORD_IP}:${PORT}"
+fi
+
+if [[ -n "$QUERY_BASE" ]]; then
+  if run_trino_query "SELECT 1" "$QUERY_BASE"; then
+    if [[ -n "$TRINO_QUERY_ERROR" ]]; then
+      fail "coordinator SELECT 1 returned error: ${TRINO_QUERY_ERROR}"
+    elif printf '%s' "$TRINO_QUERY_DATA" | grep -q '\[\[1\]\]'; then
+      pass "coordinator SELECT 1 returned [[1]]"
+    else
+      fail "coordinator SELECT 1 unexpected data: ${TRINO_QUERY_DATA:-<empty>}"
+    fi
+  else
+    fail "coordinator SELECT 1 request failed @ ${QUERY_BASE}/v1/statement"
+  fi
+else
+  fail "coordinator SELECT 1 skipped: no coordinator host/IP discovered"
+fi
 
 echo "---- summary PASS=${PASS_N} FAIL=${FAIL_N} ----"
 [[ "$FAIL_N" -eq 0 ]] || exit 1
