@@ -1,0 +1,28 @@
+[project]
+name = "odp-smoke-tests"
+version = "0.1.0"
+description = "Smoke-test pipeline for Ambari-managed ODP clusters"
+requires-python = ">=3.9"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers --junitxml=reports/junit.xml --alluredir=reports/allure-results"
+timeout = 900
+markers = [
+    # tiers (SMOKE_TIER=basic deselects tier_medium; medium runs both)
+    "tier_basic: fast, safe checks run on every build",
+    "tier_medium: multi-step / integration checks (nightly)",
+    # dimensions (see docs/ODP-Smoke-Test-Cases.md §0)
+    "dim_pre: preflight (connectivity, credentials)",
+    "dim_sc: Ambari service check",
+    "dim_hl: health / availability",
+    "dim_fn: functional basic",
+    "dim_fm: functional medium",
+    "dim_auth: authentication (Kerberos / simple / LDAP)",
+    "dim_tls: TLS checks",
+    "dim_wire: RPC / data-transfer encryption",
+    "dim_rgr: Ranger authorization",
+    "dim_aud: audit",
+    "dim_log: log generation",
+]

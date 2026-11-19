@@ -1,0 +1,8 @@
+# Copy to configs/pipeline/clusters.yaml. No passwords here — they come from env vars / Jenkins credentials.
+# `tags` only label results; the suite trusts what it DETECTS from Ambari (a mismatch is reported).
+clusters:
+  rl10test:
+    ambari_url: http://10.101.11.82:8080      # port/scheme verified at runtime
+    executor_host: 10.101.11.82               # node where pytest runs (has clients + keytabs)
+    ssh_user: acceldata                       # uses sudo on the hosts
+    tags: [kerberos, tls-partial, ha]

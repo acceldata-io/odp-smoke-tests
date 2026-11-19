@@ -1,0 +1,8 @@
+# Optional. Declares how a cluster SHOULD be secured. Without this file the suite tests the cluster
+# as configured and only reports its posture; with it, deviations become FAILures.
+# Copy to configs/pipeline/expected_posture.yaml.
+rl10test:
+  default: {auth: kerberos}
+  services:
+    KAFKA4: {auth: kerberos}        # currently PLAINTEXT -> would FAIL
+    TRINO:  {auth: kerberos, tls: true}

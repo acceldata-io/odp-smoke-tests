@@ -3,3 +3,13 @@ __pycache__/
 *.pyc
 .DS_Store
 .idea/
+
+# --- CI pipeline (pytest + Jenkins, see docs/) ---
+.venv/
+venv/
+.pytest_cache/
+configs/pipeline/clusters.yaml
+configs/pipeline/expected_posture.yaml
+*.keytab
+*.pem
+*.jks

@@ -1,0 +1,6 @@
+# Known, harmless ERROR/WARN lines ignored by STD-LOG-04.
+# Each entry: service (Ambari name or "*"), regex, reason. Keep reasons — unexplained entries hide real bugs.
+allowlist: []
+#  - service: HDFS
+#    regex: "example regex"
+#    reason: "why this is harmless"

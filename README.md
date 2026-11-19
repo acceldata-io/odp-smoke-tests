@@ -1319,3 +1319,67 @@ sample-jobs/
     spark-sample-smoke.scala
   *.sh                      # smoke entrypoints (incl. Spark Pi + flink-sample-smoke.sh)
 ```
+
+---
+
+## CI pipeline (pytest + Jenkins)
+
+An automated layer on top of the scripts above: it discovers the installed services from Ambari, detects how each one
+is secured (Kerberos / simple / LDAP, TLS, HA, Ranger plugin), and runs checks from a Jenkins job
+(Jenkins repo, branch `ODP-8764`) with JUnit + Allure reports. Design docs:
+
+| File | Contents |
+|---|---|
+| [docs/ODP-Smoke-Test-Pipeline-Plan.md](docs/ODP-Smoke-Test-Pipeline-Plan.md) | Tech stack, architecture, layers, phasing |
+| [docs/ODP-Smoke-Test-Cases.md](docs/ODP-Smoke-Test-Cases.md) | Test-case catalog (standard suites + per-service cases) |
+| [docs/ODP-Smoke-Test-Config-Matrix.md](docs/ODP-Smoke-Test-Config-Matrix.md) | Kerberos / TLS / HA / LDAP combinations |
+
+Status: preflight (SSH/sudo, Ambari & Ranger login), discovery + security/HA profile, per-service health and runtime (JDK) checks are implemented.
+The existing scripts in this repo are untouched; the plan is to run them from the pipeline as test cases.
+
+### How it runs
+```
+Jenkins agent (usdc_runner) / your laptop            executor = FIRST IP (Ambari server)
+  bin/run_smoke.sh  ──ssh: copy suite, key, secrets(stdin, 0600)──►  bin/remote_run.sh (as root)
+                                                                     venv /var/lib/odp-smoke/venv-<hash>
+                                                                     pytest → Ambari/Ranger REST, ssh to other nodes
+  reports/  ◄──────────────── junit.xml, allure-results/, profile.json, run_summary.json, pytest.log
+```
+The remote run directory `/tmp/odp-smoke-<run_id>` (with the key and secrets) is always deleted at the end.
+
+#### Run from your laptop
+```bash
+export AMBARI_USER=admin AMBARI_PASSWORD='…' RANGER_USER=admin RANGER_PASSWORD='…'
+bin/run_smoke.sh --ips 10.101.11.82,10.101.11.89,10.101.11.114 --key ~/downloads/basa_us_dc.pem \
+                 [--tier basic|medium] [--services HDFS,HIVE] [--ambari-url https://h:8443] [-- -k ranger]
+```
+Exit code: `0` all passed, `1` some tests failed, other = the run itself broke.
+
+#### Run from Jenkins
+The pipeline lives in the **Jenkins repo, branch `ODP-8764`** (`acceldata-io/Jenkins`, top-level `Jenkinsfile`). Parameters: `user_name`, `IPAddresses` (one per line, Ambari server first, all nodes),
+`initial_user`, `ssh_port`, `USER_KEY`, `AMBARI_URL` (optional), `AMBARI_USER`/`AMBARI_PASSWORD`,
+`RANGER_USER`/`RANGER_PASSWORD` (password-type, masked), `TIER`, `SERVICES`, `EXTRA_PYTEST_ARGS`,
+`SMOKE_REPO`/`SMOKE_BRANCH`, `AGENT_LABEL` (default `usdc_runner`). Publishes JUnit + Allure, Slack to `odp-alerts-jenkins`.
+Test failures → build UNSTABLE; broken run → FAILURE.
+
+#### Offline unit tests (no cluster)
+```bash
+python -m pytest tests_framework -o addopts="" -p no:cacheprovider
+```
+
+### Layout
+```
+bin/               run_smoke.sh (agent side), remote_run.sh (executor side)
+configs/pipeline/  cluster inventory, log-error allowlist, expected security posture (examples; no secrets)
+framework/         config, ambari client, discovery, profile (security detection), remote (ssh)
+plugins/           per-service test helpers (coming)
+tests/             00 preflight, 01 health (per service); service checks / functional / ranger / logs to come
+tests_framework/   offline unit tests for the framework
+reports/           generated (git-ignored)
+```
+
+### Requirements
+- Executor node: any of python3.8–3.13 (3.11/3.12 typical; Python 2 / 3.6-only nodes get a private Python 3.12 via `uv`, needs GitHub), access to PyPI (or a mirror), `curl` with GSS-API, the service clients and keytabs.
+- Works with JDK 8 / 11 / 17 / 21 and HA or non-HA clusters — all detected, nothing to configure (see docs/ODP-Smoke-Test-Config-Matrix.md §5a).
+- `initial_user` must have passwordless sudo on all nodes, and the same key must work for all nodes.
+
