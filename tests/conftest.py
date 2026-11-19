@@ -4,6 +4,7 @@ import pytest
 
 from framework import config as config_mod
 from framework import runtime
+from framework.report import Collector
 from framework.discovery import discover, selected_services
 
 _SETTINGS = None
@@ -65,3 +66,54 @@ def pytest_sessionfinish(session, exitstatus):
     if runtime._cache is not None:  # only if the runtime tests ran
         summary.setdefault("topology", {})["runtime"] = runtime.summarize(runtime._cache)
     (s.report_dir / "run_summary.json").write_text(json.dumps(summary, indent=2))
+
+
+# ---- summary report (reports/summary.txt + summary.html, printed at the end of the console) ----
+_results = {}
+
+
+def _message(rep):
+    if rep.skipped and isinstance(rep.longrepr, tuple):
+        return str(rep.longrepr[2]).replace("Skipped: ", "", 1)
+    text = rep.longreprtext or ""
+    e_lines = [l[1:].strip() for l in text.splitlines() if l.startswith("E ")]
+    return "\n".join(e_lines) if e_lines else text
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    rep = outcome.get_result()
+    raw = item.callspec.params if hasattr(item, "callspec") else {}
+    # drop pytest's NOTSET placeholder (used when a parameter list is empty, e.g. Ambari unreachable)
+    params = {k: v for k, v in raw.items() if isinstance(v, (str, int, float))}
+    entry = _results.setdefault(item.nodeid, {"name": item.originalname or item.name, "params": params,
+                                              "outcome": None, "message": ""})
+    if rep.when == "setup" and (rep.failed or rep.skipped):
+        entry.update(outcome="error" if rep.failed else "skipped", message=_message(rep))
+    elif rep.when == "call":
+        entry.update(outcome=rep.outcome, message=_message(rep) if not rep.passed else "")
+    elif rep.when == "teardown" and rep.failed:
+        entry.update(outcome="error", message=_message(rep))
+
+
+def pytest_terminal_summary(terminalreporter):
+    s = _settings()
+    collector = Collector()
+    for nodeid, r in _results.items():
+        if r["outcome"]:
+            collector.add(nodeid, r["name"], r["params"], r["outcome"], r["message"])
+    if not collector.results:
+        return
+    data, _ = discover(s)
+    cluster = data["cluster"]["name"] if data else (s.ips[0] if s.ips else "?")
+    title = f"ODP smoke tests - cluster {cluster} - run {s.run_id} - tier {s.tier}"
+    try:  # the summary must never break a test run
+        text = collector.text(title)
+        (s.report_dir / "summary.txt").write_text(text)
+        (s.report_dir / "summary.html").write_text(collector.html(title))
+    except Exception as e:
+        terminalreporter.write_line(f"WARNING: could not build summary report: {e!r}")
+        return
+    terminalreporter.write_sep("=", "SUMMARY (also in reports/summary.txt / summary.html)")
+    terminalreporter.write(text)

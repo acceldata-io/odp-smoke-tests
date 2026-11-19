@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs ON the executor node as root (called by run_smoke.sh). Usage: remote_run.sh <run_dir> [pytest args...]
-# Picks/installs a Python >= 3.8, creates/reuses a venv, then runs pytest. Exit code = pytest's.
+# Picks the cluster's python3 >= 3.8, creates/reuses a venv, then runs pytest. Exit code = pytest's.
 set -euo pipefail
 RUN_DIR="$1"; shift
 cd "$RUN_DIR"
@@ -8,34 +8,18 @@ cd "$RUN_DIR"
 STATE=/var/lib/odp-smoke
 mkdir -p "$STATE"
 
-# Python for the test runner (never touches the cluster's own Python):
-#  1. newest system python3 >= 3.8 (clusters ship 3.11 / 3.12; RHEL 8 default 3.6 and python2 are not usable)
-#  2. else a private Python 3.12 installed with uv into $STATE/python (needs GitHub access;
-#     disable with SMOKE_ALLOW_PYTHON_DOWNLOAD=0, force with SMOKE_FORCE_PYTHON_DOWNLOAD=1)
+# Use the cluster's own Python: newest python3 >= 3.8 (clusters ship 3.11 / 3.12). Python 2 and 3.6 are skipped.
+# The venv below only holds our test libraries, so the system Python that Ambari's agent uses is never modified.
 PY=""
-if [ "${SMOKE_FORCE_PYTHON_DOWNLOAD:-0}" != 1 ]; then
-  for cand in python3.13 python3.12 python3.11 python3.10 python3.9 python3.8 python3; do
-    p="$(command -v "$cand" 2>/dev/null || true)"
-    if [ -n "$p" ] && "$p" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' 2>/dev/null; then
-      PY="$p"; break
-    fi
-  done
-fi
+for cand in python3.13 python3.12 python3.11 python3.10 python3.9 python3.8 python3; do
+  p="$(command -v "$cand" 2>/dev/null || true)"
+  if [ -n "$p" ] && "$p" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' 2>/dev/null; then
+    PY="$p"; break
+  fi
+done
 if [ -z "$PY" ]; then
-  if [ "${SMOKE_ALLOW_PYTHON_DOWNLOAD:-1}" != 1 ]; then
-    echo "ERROR: no python3 >= 3.8 on executor and download disabled (RHEL 8: dnf install python3.11)"; exit 3
-  fi
-  UV="$STATE/uv/uv"
-  if [ ! -x "$UV" ]; then
-    echo "==> no python3 >= 3.8 found; downloading uv to install a private Python 3.12"
-    mkdir -p "$STATE/uv"
-    curl -fsSL --retry 3 -o "$STATE/uv/uv.tgz" \
-      "https://github.com/astral-sh/uv/releases/latest/download/uv-$(uname -m)-unknown-linux-gnu.tar.gz"
-    tar -xzf "$STATE/uv/uv.tgz" -C "$STATE/uv" --strip-components=1 && rm -f "$STATE/uv/uv.tgz"
-  fi
-  export UV_PYTHON_INSTALL_DIR="$STATE/python" UV_CACHE_DIR="$STATE/uv-cache" UV_PYTHON_PREFERENCE=only-managed
-  "$UV" python install -q 3.12
-  PY="$("$UV" python find 3.12)"
+  echo "ERROR: no python3 >= 3.8 on $(hostname -f) (found only Python 2 / 3.6?). Install python3.11 or python3.12 and re-run."
+  exit 3
 fi
 echo "==> using $("$PY" -V 2>&1) ($PY)"
 

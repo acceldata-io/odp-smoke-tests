@@ -1379,7 +1379,7 @@ reports/           generated (git-ignored)
 ```
 
 ### Requirements
-- Executor node: any of python3.8–3.13 (3.11/3.12 typical; Python 2 / 3.6-only nodes get a private Python 3.12 via `uv`, needs GitHub), access to PyPI (or a mirror), `curl` with GSS-API, the service clients and keytabs.
+- Executor node: the cluster's own python3 3.8+ (3.11 / 3.12 typical; Python 2 alongside is fine), access to PyPI (or a mirror) for the test libraries, `curl` with GSS-API, the service clients and keytabs.
 - Works with JDK 8 / 11 / 17 / 21 and HA or non-HA clusters — all detected, nothing to configure (see docs/ODP-Smoke-Test-Config-Matrix.md §5a).
 - `initial_user` must have passwordless sudo on all nodes, and the same key must work for all nodes.
 

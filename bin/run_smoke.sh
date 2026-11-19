@@ -85,8 +85,7 @@ for a in ${PYTEST_ARGS[@]+"${PYTEST_ARGS[@]}"}; do QUOTED_ARGS+=" $(printf '%q' 
 
 echo "==> running tests on $EXECUTOR"
 rc=0
-PYENV="SMOKE_ALLOW_PYTHON_DOWNLOAD=${SMOKE_ALLOW_PYTHON_DOWNLOAD:-1} SMOKE_FORCE_PYTHON_DOWNLOAD=${SMOKE_FORCE_PYTHON_DOWNLOAD:-0}"
-"${SSH[@]}" "sudo -n env $PYENV bash '$REMOTE_DIR/bin/remote_run.sh' '$REMOTE_DIR'$QUOTED_ARGS" || rc=$?
+"${SSH[@]}" "sudo -n bash '$REMOTE_DIR/bin/remote_run.sh' '$REMOTE_DIR'$QUOTED_ARGS" || rc=$?
 
 echo "==> fetching reports into $REPORT_DIR"
 mkdir -p "$REPORT_DIR"

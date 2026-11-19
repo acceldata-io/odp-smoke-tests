@@ -178,7 +178,7 @@ side by side, plus service-specific JDKs) and HA vs non-HA. None of these are pi
 
 | Axis | How it is handled |
 |---|---|
-| **Python** (test runner) | `bin/remote_run.sh` uses the newest system `python3.13…3.8`; Python 2 and 3.6 are ignored. If none fits, it installs a private Python 3.12 with `uv` into `/var/lib/odp-smoke/python` (needs GitHub; `SMOKE_ALLOW_PYTHON_DOWNLOAD=0` to forbid). The cluster's own Python is never changed. The venv is keyed by interpreter + requirements. |
+| **Python** (test runner) | `bin/remote_run.sh` uses the cluster's newest system `python3.13…3.8` (3.11 / 3.12 on ODP clusters); Python 2 and 3.6 are ignored. If none exists the run stops with a clear error. Test libraries go into a venv keyed by interpreter + requirements, so the system Python is never modified. |
 | **Python** (cluster) | Recorded per host in `run_summary.json` → `topology.runtime` (system interpreters and the Ambari agent's Python via `ambari-python-wrap`). |
 | **JDK** | Stack JDK = `stack.java.home` (else `java.home`) from `ambari.properties`. Service-specific JDKs = any Ambari config key matching `*java_home` / `*java17_home` / `JAVA_HOME` with an absolute path (rl10test: `nifi2-env` → 21, `nifi-registry2-env` → 21, `trino-env` / `trino-gateway-env` → `/opt/jdk-23`, `cruise-control-env` → 11). |
 | **HA / non-HA** | `profile.cluster.ha` = HDFS NameNode HA; `profile.cluster.ha_components` = every MASTER on > 1 host; per-service `ha` map. |
@@ -251,7 +251,7 @@ Suggested minimum set:
 1. Kerberos + TLS + HA + JDK 17 + Python 3.12 (production-like)
 2. Kerberos + no TLS + HA + JDK 17 + Python 3.12 (rl10test)
 3. No Kerberos + TLS + non-HA + JDK 11 + Python 3.11
-4. No Kerberos + no TLS + non-HA + JDK 8 + Python 2 only (oldest; exercises the private-Python fallback)
+4. No Kerberos + no TLS + non-HA + JDK 8 + Python 3.11 with Python 2 also installed (oldest)
 5. Kerberos + TLS + HA + JDK 21 + Python 3.11
 6. LDAP (Ranger/Hive/Knox) + Kerberos + TLS (add later)
 
